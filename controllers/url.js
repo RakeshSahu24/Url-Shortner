@@ -1,15 +1,30 @@
 const {nanoid} = require('nanoid');
-const URL = require('../models/url.js'); 
+const {URL: ValidatedURL} = require('node:url');
+const URL = require('../models/url.js');
 
 const handleGenerateNewShortUrl = async (req, res) => {
-    const body = req.body;
-    if(!body.url) {
+    const body = req.body || {};
+    const value = typeof body.url === 'string' ? body.url.trim() : '';
+
+    if (!value) {
         return res.status(400).json({error: 'URL is required'});
     }
+
+    let parsedUrl;
+    try {
+        parsedUrl = new ValidatedURL(value);
+    } catch {
+        return res.status(400).json({error: 'URL must be a valid http or https URL'});
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return res.status(400).json({error: 'URL must be a valid http or https URL'});
+    }
+
     const id = nanoid(8);
     await URL.create({
         shortId: id,
-        redirectUrl: body.url,
+        redirectUrl: value,
         visitHistory: []
     })
     console.log(`Generated new short URL with id: ${id}`);

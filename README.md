@@ -2,6 +2,8 @@
 
 A full-stack URL shortening service with a React interface, an Express API, and MongoDB persistence. Create compact links, redirect visitors to their destination, and inspect timestamped visit activity.
 
+**Live Demo:** TODO
+
 ## Features
 
 - Generate unique short links with an 8-character ID
@@ -23,7 +25,7 @@ A full-stack URL shortening service with a React interface, an Express API, and 
 Make sure the following are installed:
 
 - [Node.js](https://nodejs.org/) and npm
-- [MongoDB](https://www.mongodb.com/) running locally
+- [MongoDB](https://www.mongodb.com/) running locally, or a MongoDB Atlas connection string
 
 ## Getting Started
 
@@ -48,24 +50,29 @@ Create a local environment file:
 cp .env.example .env
 ```
 
-For local development, the defaults in `.env.example` are:
+The local defaults use the Vite proxy for API calls:
 
 ```env
+NODE_ENV=development
+PORT=3000
+MONGODB_URI=mongodb://localhost:27017/short-url
+CORS_ORIGIN=http://localhost:5173
 VITE_API_BASE_URL=/api
 VITE_PUBLIC_BACKEND_URL=http://localhost:3000
 ```
 
-| Variable | Description |
-| --- | --- |
-| `VITE_API_BASE_URL` | Base URL used by the frontend to call the API. The Vite development server proxies `/api` to the backend. |
-| `VITE_PUBLIC_BACKEND_URL` | Public backend origin used to build links shown to users. |
-
 ### 4. Start the backend
 
-The API runs on port `3000` and connects to `mongodb://localhost:27017/short-url`.
+The API uses port `3000` and the local MongoDB connection string by default:
 
 ```bash
 npm start
+```
+
+For automatic backend restarts during development, use:
+
+```bash
+npm run dev:server
 ```
 
 ### 5. Start the frontend
@@ -76,9 +83,43 @@ In a second terminal, run:
 npm run dev
 ```
 
-Open the local URL printed by Vite, usually `http://localhost:5173`.
+Open the local URL printed by Vite, usually `http://localhost:5173`. The Vite proxy forwards `/api` requests to the backend during local development.
+
+## Environment Variables
+
+### Backend
+
+| Variable | Required in production | Description |
+| --- | --- | --- |
+| `NODE_ENV` | Yes | Set to `production` for deployment. |
+| `PORT` | No | API port; defaults to `3000`. Some hosts provide this automatically. |
+| `MONGODB_URI` | Yes | MongoDB connection string. The backend fails fast in production when it is missing. |
+| `CORS_ORIGIN` | Yes | Comma-separated origins allowed to call the API, such as the deployed Vercel or Netlify origin. Wildcard `*` is not allowed in production. |
+
+### Frontend
+
+Set both frontend variables before running `npm run build`. Vite embeds them into the production bundle.
+
+| Variable | Required in production | Description |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | Yes | API base URL used by Axios. For local development, use `/api` to use the Vite proxy. For production, use the deployed backend origin. |
+| `VITE_PUBLIC_BACKEND_URL` | Yes | Public backend origin used to build links shown to users. For production, use the deployed backend origin. |
 
 ## API Reference
+
+### Health check
+
+```http
+GET /health
+```
+
+**Response (`200 OK`):**
+
+```json
+{
+  "status": "ok"
+}
+```
 
 ### Create a short URL
 
@@ -90,6 +131,8 @@ Content-Type: application/json
   "url": "https://example.com/a/very/long/url"
 }
 ```
+
+Only valid `http` and `https` URLs are accepted. Invalid input returns `400 Bad Request`.
 
 **Response (`201 Created`):**
 
@@ -130,7 +173,8 @@ GET /url/:shortId/analytics
 | Command | Description |
 | --- | --- |
 | `npm run dev` | Start the Vite development server |
-| `npm start` | Start the Express API with nodemon |
+| `npm run dev:server` | Start the Express API with nodemon |
+| `npm start` | Start the Express API with plain Node.js |
 | `npm run build` | Type-check and build the frontend |
 | `npm run typecheck` | Run TypeScript validation |
 | `npm run lint` | Lint frontend source files |
@@ -151,11 +195,50 @@ GET /url/:shortId/analytics
 └── vite.config.ts     # Vite configuration and development proxy
 ```
 
-## Production Notes
+## Deployment
 
-- The backend currently uses a fixed port and local MongoDB connection string in `index.js`.
-- `npm run build` builds the frontend only. A production API process must run separately and the environment variables must be set before building the frontend.
-- When the frontend and API use different origins, configure the API to allow requests from the deployed frontend.
+### MongoDB Atlas
+
+1. Create a free MongoDB Atlas account and cluster.
+2. Create a database user with access to the deployment database.
+3. Allow network access from the backend host. Add the host's outbound IP addresses in Atlas Network Access, following Render or Railway's current guidance.
+4. Copy the Atlas connection string into the backend `MONGODB_URI` environment variable, replacing the username, password, and database placeholders. Do not commit this value.
+
+### Backend on Render or Railway
+
+1. Create a new web service from this repository.
+2. Use the repository root as the service root.
+3. Use `npm install` to install dependencies and `npm start` as the start command.
+4. Set the backend environment variables:
+
+   ```text
+   NODE_ENV=production
+   PORT=3000
+   MONGODB_URI=<MongoDB Atlas connection string>
+   CORS_ORIGIN=<deployed frontend origin>
+   ```
+
+5. Deploy the service and verify `https://<backend-domain>/health` returns `{ "status": "ok" }`.
+6. Add the deployed frontend origin to `CORS_ORIGIN` if it differs from the value used during the first deployment.
+
+The backend is a Node.js service. The frontend build is deployed separately.
+
+### Frontend on Vercel or Netlify
+
+1. Import this repository into Vercel or Netlify.
+2. Set the framework preset to Vite and the root directory to the repository root.
+3. Set these environment variables before the build:
+
+   ```text
+   VITE_API_BASE_URL=<deployed backend origin>
+   VITE_PUBLIC_BACKEND_URL=<deployed backend origin>
+   ```
+
+4. Use `npm run build` as the build command.
+5. Publish directory: `dist`.
+6. Deploy and verify link creation, redirects, and analytics from the deployed frontend.
+
+The application is a single page without client-side routing, so no SPA fallback rewrite is required.
 
 ## License
 
